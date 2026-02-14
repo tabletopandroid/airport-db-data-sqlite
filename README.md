@@ -1,138 +1,190 @@
-# airport-db Data SQLite
+# @tabletopandroid/airport-db-data-sqlite
 
-An SQLite database distribution of airport data for the `airport-db` package. This module provides a queryable SQLite database of airport information from around the world, with stable schemas for identity, location, infrastructure, and operational (AIRAC) data.
+A lightweight SQLite database distribution of airport data for the airport-db ecosystem. This package provides only the database file—querying is handled by separate packages.
 
 ## Installation
 
 ```bash
-npm install @tabletop-android/airport-db-data-sqlite
+npm install @tabletopandroid/airport-db-data-sqlite
 ```
 
 ## Usage
 
-### Basic Imports
+Use the `getDatabasePath()` function to get the absolute path to the SQLite database:
 
-```typescript
-import {
-  getDatabase,
-  getDatabasePath,
-  getAirportByICAO,
-  getAirportsByCountry,
-} from "@tabletop-android/airport-db-data-sqlite";
+```javascript
+import { getDatabasePath } from "@tabletopandroid/airport-db-data-sqlite";
 
-// Get path to database file (for direct access)
 const dbPath = getDatabasePath();
-
-// Get database connection
-const db = getDatabase();
-
-// Query airports by ICAO code
-const airport = getAirportByICAO("KLZU");
+console.log(dbPath);
+// Output: /path/to/node_modules/@tabletopandroid/airport-db-data-sqlite/data/airports.sqlite
 ```
 
-### Available Query Functions
+### With sql.js (Browser/WASM)
 
-- `getAirportByICAO(icao: string)` - Get airport by ICAO code
-- `getAirportByIATA(iata: string)` - Get airport by IATA code
-- `getAirportsByCountry(countryCode: string)` - Get all airports in a country
-- `getAirportsByState(state: string, countryCode?: string)` - Get airports by state
-- `getAirportsByCity(city: string)` - Get airports by city
-- `getAirportsByType(type: string)` - Get airports by classification
-- `getAirportsWithTowers()` - Get all airports with control towers
-- `getRunwaysByAirport(icao: string)` - Get runway details
-- `getOperationalData(icao: string)` - Get AIRAC operational data
-- `getFrequencies(icao: string)` - Get radio frequencies
-- `getFuelTypes(icao: string)` - Get available fuel types
-- `getInfrastructure(icao: string)` - Get infrastructure details
-- `countAirports()` - Get total number of airports
+```javascript
+import { getDatabasePath } from "@tabletopandroid/airport-db-data-sqlite";
+import initSqlJs from "sql.js";
+import fs from "fs";
 
-### Direct Database Access
+const SQL = await initSqlJs();
+const data = fs.readFileSync(getDatabasePath());
+const db = new SQL.Database(data);
 
-You can also use the database directly:
-
-```typescript
-import { getDatabase } from "@tabletop-android/airport-db-data-sqlite";
-
-const db = getDatabase();
-const airports = db
-  .prepare("SELECT * FROM airports WHERE country_code = ? LIMIT 10")
-  .all("US");
+const result = db.exec("SELECT * FROM airports WHERE icao = 'KLZU'");
+console.log(result);
 ```
 
-### In Other Packages
+### With better-sqlite3 (Node.js)
 
-To use the database in other Node.js packages:
+```javascript
+import Database from "better-sqlite3";
+import { getDatabasePath } from "@tabletopandroid/airport-db-data-sqlite";
+
+const db = new Database(getDatabasePath(), { readonly: true });
+const airport = db.prepare("SELECT * FROM airports WHERE icao = ?").get("KLZU");
+console.log(airport);
+```
+
+### With D1 (Cloudflare Workers)
 
 ```typescript
-// Import the database module
-import {
-  getDatabase,
-  getAirportByICAO,
-} from "@tabletop-android/airport-db-data-sqlite";
+import { getDatabasePath } from "@tabletopandroid/airport-db-data-sqlite";
 
-// Query the database
-const klzu = getAirportByICAO("KLZU");
-console.log(klzu?.name); // Gwinnett County Airport
+// Copy the database file to your project and reference it in wrangler.toml
+// Then bind it to your worker environment
 ```
 
 ## Database Schema
 
-The SQLite database includes the following tables:
+The `airports.sqlite` file contains the following tables:
 
 ### airports
 
-- `icao` (TEXT, PRIMARY KEY) - ICAO code
-- `iata` (TEXT, UNIQUE) - IATA code
-- `faa` (TEXT) - FAA identifier
-- `local` (TEXT) - Local identifier
-- `name` (TEXT) - Airport name
-- `type` (TEXT) - Airport type classification
-- `status` (TEXT) - Operational status
-- `latitude`, `longitude`, `elevation_ft` - Geographic data
-- `country`, `country_code` - Location details
-- `state`, `county`, `city`, `zip` - Regional information
-- `timezone`, `magnetic_variation` - Additional metadata
-- `has_tower` (BOOLEAN) - Has control tower
+Core airport identity and location data
+
+- `icao` (TEXT, PRIMARY KEY)
+- `iata` (TEXT, UNIQUE)
+- `faa` (TEXT)
+- `name` (TEXT)
+- `type` (TEXT)
+- `latitude`, `longitude`
+- `elevation_ft`
+- `country`, `country_code`
+- `state`, `city`, `zip`
+- `timezone`
+- `has_tower` (BOOLEAN)
 
 ### runways
 
-- `id` (TEXT) - Runway identifier
-- `airport_icao` (TEXT, FOREIGN KEY) - Associated airport
-- `length_ft`, `width_ft` - Dimensions
-- `surface` - Surface material type
-- `lighting` (BOOLEAN)
+Runway specifications
+
+- `id` (TEXT)
+- `airport_icao` (TEXT, FOREIGN KEY)
+- `length_ft`, `width_ft`
+- `surface`
+- `lighting`
 
 ### infrastructure
 
+Airport facilities
+
 - `airport_icao` (TEXT, FOREIGN KEY)
-- `has_fbo`, `has_hangars`, `has_tie_downs` (BOOLEAN)
+- `has_fbo`, `has_hangars`, `has_tie_downs`
 
 ### operational
 
+AIRAC-aware operational data
+
 - `airport_icao` (TEXT, FOREIGN KEY)
-- `airac_cycle` (TEXT) - AIRAC cycle identifier
+- `airac_cycle`
 
 ### frequencies
 
+Radio frequencies
+
 - `airport_icao` (TEXT, FOREIGN KEY)
-- `atis`, `tower`, `ground`, `clearance`, `unicom`, `approach`, `departure` (TEXT)
+- `atis`, `tower`, `ground`, `clearance`, `unicom`, `approach`, `departure`
 
 ### fuel_available
 
+Available fuel types
+
 - `airport_icao` (TEXT, FOREIGN KEY)
-- `fuel_type` (TEXT) - Available fuel type
+- `fuel_type`
 
-## Accessing the Raw Database File
+## Why Just the Database?
 
-For direct SQLite access or to use the database in other tools:
+This package provides **only the data distribution**:
 
-```typescript
-import { getDatabasePath } from "@tabletop-android/airport-db-data-sqlite";
+- ✅ No runtime dependencies
+- ✅ Works in any JavaScript environment (Node.js, browsers, workers, WASM)
+- ✅ Use the query library of your choice
+- ✅ Smaller package footprint
+- ✅ Distributes pre-built schema with indexes
 
-const path = getDatabasePath();
-// Use with your SQLite tool or library
+Query packages can import this and provide API layers for specific use cases.
+
+## Querying Packages
+
+Packages that build on this data distribution:
+
+- `airport-db` — TypeScript query API for Node.js
+- _Additional query libraries coming_
+
+## Development
+
+### Regenerating the Database
+
+If you have airport data you want to add:
+
+```bash
+npm run generate-db
 ```
+
+This reads `scripts/generate-db.js` which uses sql.js to create the clean schema.
+
+## Contributing
+
+This project is open-source and welcomes contributions! We're building a comprehensive, community-maintained airport database.
+
+### How to Contribute
+
+- **Add airport data** — Improve coverage or accuracy
+- **Fix errors** — Suggest corrections
+- **Improve documentation** — Help others understand the data
+- **Report issues** — Let us know about missing or incorrect data
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed guidelines on:
+
+- Setting up your development environment
+- Adding or updating airport data
+- Data quality standards
+- Submission workflow
+
+### Data Quality
+
+We prioritize accuracy and completeness. All contributions should reference verifiable public sources like:
+
+- FAA (Federal Aviation Administration)
+- ICAO (International Civil Aviation Organization)
+- OurAirports.com
+- OpenFlights
 
 ## License
 
-See LICENSE file
+This project is licensed under the **Open Data Commons Open Database License (ODbL) v1.0**.
+
+This means:
+
+- ✅ You can use, copy, and share the database
+- ✅ You can create works from it
+- ✅ You can modify and improve it
+- ℹ️ You must attribute the source
+- ℹ️ Any improvements must be shared back under the same license
+
+See [LICENSE](./LICENSE) for full details and [opendatacommons.org](https://opendatacommons.org/licenses/odbl/1.0/) for more information.
+
+---
+
+Built with ✈️ by the open aviation community

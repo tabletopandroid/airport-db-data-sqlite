@@ -1,48 +1,50 @@
 {
-  "name": "@tabletop-android/airport-db-data-sqlite",
-  "version": "1.0.0",
-  "description": "SQLite database distribution of airport data for airport-db",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "name": "@tabletopandroid/airport-db-data-sqlite",
+  "version": "0.1.0",
+  "description": "SQLite database distribution of airport data for the airport-db ecosystem",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./index.js",
+  "homepage": "https://github.com/tabletop-android/airport-db-data-sqlite",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tabletop-android/airport-db-data-sqlite.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tabletop-android/airport-db-data-sqlite/issues"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
   "files": [
-    "dist",
-    "data"
+    "data",
+    "index.js",
+    "README.md",
+    "CONTRIBUTING.md",
+    "LICENSE"
   ],
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./db": {
-      "types": "./dist/db.d.ts",
-      "default": "./dist/db.js"
-    },
-    "./path": {
-      "default": "./data/airports.db"
+      "default": "./index.js"
     }
   },
   "scripts": {
-    "build": "tsc",
-    "prepare": "npm run build && npm run init-db",
-    "init-db": "node dist/init-db.js",
-    "watch": "tsc --watch"
+    "generate-db": "node scripts/generate-db.js"
   },
   "keywords": [
     "airport",
     "database",
     "sqlite",
     "aviation",
-    "airac"
+    "airac",
+    "icao",
+    "iata",
+    "flight-sim",
+    "geospatial"
   ],
   "author": "tabletop ANDROID",
-  "license": "ISC",
+  "license": "ODbL-1.0",
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^20.10.5",
-    "better-sqlite3": "^9.2.2",
-    "typescript": "^5.3.3"
-  },
-  "dependencies": {
-    "better-sqlite3": "^9.2.2"
+    "sql.js": "^1.14.0"
   }
 }

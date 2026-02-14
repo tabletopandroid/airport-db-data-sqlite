@@ -1,27 +1,21 @@
-import Database from "better-sqlite3";
-import path from "path";
-import fs from "fs";
-
 /**
- * Initialize the SQLite database with schema
+ * Generate the airports.sqlite database using sql.js
+ * This creates the schema without requiring native SQLite bindings
+ *
+ * Usage: node scripts/generate-db.js
  */
-function initializeDatabase() {
-  const dbPath = path.join(__dirname, "..", "data", "airports.db");
-  const dataDir = path.dirname(dbPath);
 
-  // Ensure data directory exists
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
+const fs = require("fs");
+const path = require("path");
+const initSqlJs = require("sql.js");
 
-  const db = new Database(dbPath);
+async function generateDatabase() {
+  const SQL = await initSqlJs();
+  const db = new SQL.Database();
 
-  // Enable foreign keys
-  db.pragma("foreign_keys = ON");
-
-  // Create tables
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS airports (
+  // Execute schema creation
+  db.run(`
+    CREATE TABLE airports (
       icao TEXT PRIMARY KEY,
       iata TEXT UNIQUE,
       faa TEXT UNIQUE,
@@ -47,7 +41,7 @@ function initializeDatabase() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE TABLE IF NOT EXISTS runways (
+    CREATE TABLE runways (
       id TEXT NOT NULL,
       airport_icao TEXT NOT NULL PRIMARY KEY,
       length_ft INTEGER NOT NULL,
@@ -57,7 +51,7 @@ function initializeDatabase() {
       FOREIGN KEY (airport_icao) REFERENCES airports(icao) ON DELETE CASCADE
     );
 
-    CREATE TABLE IF NOT EXISTS fuel_available (
+    CREATE TABLE fuel_available (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       airport_icao TEXT NOT NULL,
       fuel_type TEXT NOT NULL,
@@ -65,7 +59,7 @@ function initializeDatabase() {
       FOREIGN KEY (airport_icao) REFERENCES airports(icao) ON DELETE CASCADE
     );
 
-    CREATE TABLE IF NOT EXISTS infrastructure (
+    CREATE TABLE infrastructure (
       airport_icao TEXT PRIMARY KEY,
       has_fbo BOOLEAN,
       has_hangars BOOLEAN,
@@ -73,13 +67,13 @@ function initializeDatabase() {
       FOREIGN KEY (airport_icao) REFERENCES airports(icao) ON DELETE CASCADE
     );
 
-    CREATE TABLE IF NOT EXISTS operational (
+    CREATE TABLE operational (
       airport_icao TEXT PRIMARY KEY,
       airac_cycle TEXT NOT NULL,
       FOREIGN KEY (airport_icao) REFERENCES airports(icao) ON DELETE CASCADE
     );
 
-    CREATE TABLE IF NOT EXISTS frequencies (
+    CREATE TABLE frequencies (
       airport_icao TEXT PRIMARY KEY,
       atis TEXT,
       tower TEXT,
@@ -100,19 +94,24 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_fuel_airport ON fuel_available(airport_icao);
   `);
 
-  console.log(`Database initialized at: ${dbPath}`);
-  db.close();
-}
+  // Write database to file
+  const data = db.export();
+  const buffer = Buffer.from(data);
 
-// Run initialization if executed directly
-if (require.main === module) {
-  try {
-    initializeDatabase();
-    console.log("Database initialization completed successfully");
-  } catch (error) {
-    console.error("Failed to initialize database:", error);
-    process.exit(1);
+  const dataDir = path.join(__dirname, "..", "data");
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
   }
+
+  const dbPath = path.join(dataDir, "airports.sqlite");
+  fs.writeFileSync(dbPath, buffer);
+
+  console.log(`✓ Database created at: ${dbPath}`);
+  console.log(`✓ File size: ${buffer.length} bytes`);
+  console.log("✓ Ready for distribution");
 }
 
-export default initializeDatabase;
+generateDatabase().catch((error) => {
+  console.error("Error generating database:", error);
+  process.exit(1);
+});
