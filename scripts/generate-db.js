@@ -16,7 +16,8 @@ async function generateDatabase() {
   // Execute schema creation
   db.run(`
     CREATE TABLE airports (
-      icao TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      icao TEXT NOT NULL UNIQUE,
       iata TEXT UNIQUE,
       faa TEXT UNIQUE,
       local TEXT,
@@ -43,38 +44,38 @@ async function generateDatabase() {
 
     CREATE TABLE runways (
       id TEXT NOT NULL,
-      airport_icao TEXT NOT NULL PRIMARY KEY,
+      airport_id INTEGER NOT NULL,
       length_ft INTEGER NOT NULL,
       width_ft INTEGER NOT NULL,
       surface TEXT NOT NULL,
       lighting BOOLEAN NOT NULL,
-      FOREIGN KEY (airport_icao) REFERENCES airports(icao) ON DELETE CASCADE
+      FOREIGN KEY (airport_id) REFERENCES airports(id) ON DELETE CASCADE
     );
 
     CREATE TABLE fuel_available (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      airport_icao TEXT NOT NULL,
+      airport_id INTEGER NOT NULL,
       fuel_type TEXT NOT NULL,
-      UNIQUE(airport_icao, fuel_type),
-      FOREIGN KEY (airport_icao) REFERENCES airports(icao) ON DELETE CASCADE
+      UNIQUE(airport_id, fuel_type),
+      FOREIGN KEY (airport_id) REFERENCES airports(id) ON DELETE CASCADE
     );
 
     CREATE TABLE infrastructure (
-      airport_icao TEXT PRIMARY KEY,
+      airport_id INTEGER PRIMARY KEY,
       has_fbo BOOLEAN,
       has_hangars BOOLEAN,
       has_tie_downs BOOLEAN,
-      FOREIGN KEY (airport_icao) REFERENCES airports(icao) ON DELETE CASCADE
+      FOREIGN KEY (airport_id) REFERENCES airports(id) ON DELETE CASCADE
     );
 
     CREATE TABLE operational (
-      airport_icao TEXT PRIMARY KEY,
+      airport_id INTEGER PRIMARY KEY,
       airac_cycle TEXT NOT NULL,
-      FOREIGN KEY (airport_icao) REFERENCES airports(icao) ON DELETE CASCADE
+      FOREIGN KEY (airport_id) REFERENCES airports(id) ON DELETE CASCADE
     );
 
     CREATE TABLE frequencies (
-      airport_icao TEXT PRIMARY KEY,
+      airport_id INTEGER PRIMARY KEY,
       atis TEXT,
       tower TEXT,
       ground TEXT,
@@ -82,7 +83,7 @@ async function generateDatabase() {
       unicom TEXT,
       approach TEXT,
       departure TEXT,
-      FOREIGN KEY (airport_icao) REFERENCES airports(icao) ON DELETE CASCADE
+      FOREIGN KEY (airport_id) REFERENCES airports(id) ON DELETE CASCADE
     );
 
     CREATE INDEX IF NOT EXISTS idx_airports_icao ON airports(icao);
@@ -91,7 +92,7 @@ async function generateDatabase() {
     CREATE INDEX IF NOT EXISTS idx_airports_state ON airports(state);
     CREATE INDEX IF NOT EXISTS idx_airports_city ON airports(city);
     CREATE INDEX IF NOT EXISTS idx_airports_type ON airports(type);
-    CREATE INDEX IF NOT EXISTS idx_fuel_airport ON fuel_available(airport_icao);
+    CREATE INDEX IF NOT EXISTS idx_fuel_airport ON fuel_available(airport_id);
   `);
 
   // Write database to file

@@ -63,7 +63,8 @@ The `airports.sqlite` file contains the following tables:
 
 Core airport identity and location data
 
-- `icao` (TEXT, PRIMARY KEY)
+- `id` (INTEGER, PRIMARY KEY)
+- `icao` (TEXT, UNIQUE)
 - `iata` (TEXT, UNIQUE)
 - `faa` (TEXT)
 - `name` (TEXT)
@@ -80,7 +81,7 @@ Core airport identity and location data
 Runway specifications
 
 - `id` (TEXT)
-- `airport_icao` (TEXT, FOREIGN KEY)
+- `airport_id` (INTEGER, FOREIGN KEY)
 - `length_ft`, `width_ft`
 - `surface`
 - `lighting`
@@ -89,28 +90,28 @@ Runway specifications
 
 Airport facilities
 
-- `airport_icao` (TEXT, FOREIGN KEY)
+- `airport_id` (INTEGER, FOREIGN KEY, PRIMARY KEY)
 - `has_fbo`, `has_hangars`, `has_tie_downs`
 
 ### operational
 
 AIRAC-aware operational data
 
-- `airport_icao` (TEXT, FOREIGN KEY)
+- `airport_id` (INTEGER, FOREIGN KEY, PRIMARY KEY)
 - `airac_cycle`
 
 ### frequencies
 
 Radio frequencies
 
-- `airport_icao` (TEXT, FOREIGN KEY)
+- `airport_id` (INTEGER, FOREIGN KEY, PRIMARY KEY)
 - `atis`, `tower`, `ground`, `clearance`, `unicom`, `approach`, `departure`
 
 ### fuel_available
 
 Available fuel types
 
-- `airport_icao` (TEXT, FOREIGN KEY)
+- `airport_id` (INTEGER, FOREIGN KEY)
 - `fuel_type`
 
 ## Why Just the Database?

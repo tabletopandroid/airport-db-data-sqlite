@@ -109,7 +109,7 @@ Example adding to generate-db.js:
 
 ```javascript
 db.run(`
-  INSERT INTO runways (id, airport_icao, length_ft, width_ft, surface, lighting)
+  INSERT INTO runways (id, airport_id, length_ft, width_ft, surface, lighting)
   VALUES 
   ('09/27', 'KLZU', 6001, 100, 'asphalt', 1),
   ('03/21', 'KLZU', 5000, 75, 'concrete', 1)

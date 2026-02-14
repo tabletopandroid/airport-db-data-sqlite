@@ -29,7 +29,8 @@
     }
   },
   "scripts": {
-    "generate-db": "node scripts/generate-db.js"
+    "generate-db": "node scripts/generate-db.js",
+    "import-data": "node scripts/import-csv.cjs"
   },
   "keywords": [
     "airport",
