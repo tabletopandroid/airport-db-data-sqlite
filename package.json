@@ -1,0 +1,48 @@
+{
+  "name": "@tabletop-android/airport-db-data-sqlite",
+  "version": "1.0.0",
+  "description": "SQLite database distribution of airport data for airport-db",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "data"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./db": {
+      "types": "./dist/db.d.ts",
+      "default": "./dist/db.js"
+    },
+    "./path": {
+      "default": "./data/airports.db"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build && npm run init-db",
+    "init-db": "node dist/init-db.js",
+    "watch": "tsc --watch"
+  },
+  "keywords": [
+    "airport",
+    "database",
+    "sqlite",
+    "aviation",
+    "airac"
+  ],
+  "author": "tabletop ANDROID",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.10.5",
+    "better-sqlite3": "^9.2.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.2.2"
+  }
+}
