@@ -3,10 +3,7 @@
 /**
  * Import CSV data into airports.sqlite
  *
- * This script reads CSV files from the source of truth and imports them
- * into the SQLite database, matching the schema exactly.
- *
- * Usage: node scripts/import-csv.js [database-path]
+ * Usage: node scripts/import-csv.cjs [database-path]
  */
 
 const fs = require("fs");
@@ -14,8 +11,32 @@ const path = require("path");
 const readline = require("readline");
 const Database = require("better-sqlite3");
 
-const DEFAULT_DB_PATH = path.join(__dirname, "..", "data", "airports.sqlite");
-const CSV_DIR = path.join(__dirname, "..", "tmp");
+const DEFAULT_DB_PATH = path.join(__dirname, "..", "dist", "airports.sqlite");
+
+function resolveCsvDir() {
+  const candidates = [
+    path.join(__dirname, "..", "data"),
+    path.join(__dirname, "..", "tmp"),
+  ];
+
+  for (const dir of candidates) {
+    const required = [
+      "airports.csv",
+      "runways.csv",
+      "airport-frequencies.csv",
+      "countries.csv",
+    ];
+
+    const hasAll = required.every((file) => fs.existsSync(path.join(dir, file)));
+    if (hasAll) {
+      return dir;
+    }
+  }
+
+  return candidates[0];
+}
+
+const CSV_DIR = resolveCsvDir();
 
 const AIRPORTS_CSV = path.join(CSV_DIR, "airports.csv");
 const RUNWAYS_CSV = path.join(CSV_DIR, "runways.csv");
@@ -26,23 +47,20 @@ class CSVImporter {
   constructor(dbPath) {
     this.dbPath = dbPath;
     this.db = new Database(dbPath);
-    this.countriesMap = new Map(); // code -> name
+    this.db.pragma("foreign_keys = ON");
+    this.countriesMap = new Map();
     this.stats = {
-      airports: { inserted: 0, skipped: 0, updated: 0 },
+      airports: { inserted: 0, skipped: 0 },
       runways: { inserted: 0, skipped: 0 },
+      runwayEnds: { inserted: 0, skipped: 0 },
       frequencies: { inserted: 0, skipped: 0 },
     };
   }
 
-  /**
-   * Load country code → name mapping from CSV
-   */
   async loadCountries() {
-    console.log("🌍 Loading country mappings...");
+    console.log("Loading country mappings...");
 
-    const fileStream = fs.createReadStream(COUNTRIES_CSV, {
-      encoding: "utf8",
-    });
+    const fileStream = fs.createReadStream(COUNTRIES_CSV, { encoding: "utf8" });
     const rl = readline.createInterface({ input: fileStream });
 
     let lineNum = 0;
@@ -51,7 +69,6 @@ class CSVImporter {
 
     for await (const line of rl) {
       lineNum++;
-
       if (!line.trim()) continue;
 
       if (lineNum === 1) {
@@ -69,12 +86,9 @@ class CSVImporter {
       }
     }
 
-    console.log(`  ✓ Loaded ${count} countries`);
+    console.log(`  Loaded ${count} countries`);
   }
 
-  /**
-   * Parse CSV line respecting quoted fields
-   */
   parseCSVLine(line) {
     const result = [];
     let current = "";
@@ -87,7 +101,7 @@ class CSVImporter {
       if (char === '"') {
         if (inQuotes && nextChar === '"') {
           current += '"';
-          i++; // Skip next quote
+          i++;
         } else {
           inQuotes = !inQuotes;
         }
@@ -103,9 +117,6 @@ class CSVImporter {
     return result;
   }
 
-  /**
-   * Parse header line and return column index map
-   */
   getColumnMap(headerLine) {
     const headers = this.parseCSVLine(headerLine);
     return headers.reduce((map, header, idx) => {
@@ -114,39 +125,43 @@ class CSVImporter {
     }, {});
   }
 
-  /**
-   * Convert string to boolean
-   */
   toBoolean(value) {
     if (value === null || value === undefined || value === "") return null;
-    return value === "1" || value.toLowerCase() === "true" || value === "yes";
+    return value === "1" || String(value).toLowerCase() === "true" || String(value).toLowerCase() === "yes";
   }
 
-  /**
-   * Convert string to number or null
-   */
   toNumber(value) {
     if (value === null || value === undefined || value === "") return null;
     const num = parseFloat(value);
-    return isNaN(num) ? null : num;
+    return Number.isNaN(num) ? null : num;
   }
 
-  /**
-   * Import airports from CSV
-   */
-  async importAirports() {
-    console.log("\n📍 Importing airports...");
+  normalizeSurface(surface) {
+    if (!surface) return "unknown";
 
-    const fileStream = fs.createReadStream(AIRPORTS_CSV, {
-      encoding: "utf8",
-    });
+    const normalized = surface.toUpperCase();
+
+    if (normalized.includes("ASPH")) return "asphalt";
+    if (normalized.includes("CONC")) return "concrete";
+    if (normalized.includes("DIRT")) return "dirt";
+    if (normalized.includes("GRVL") || normalized === "GVL") return "gravel";
+    if (normalized.includes("GRASS") || normalized.includes("TURF")) return "grass";
+    if (normalized.includes("METAL")) return "metal";
+    if (normalized.includes("WATER")) return "water";
+
+    return "unknown";
+  }
+
+  async importAirports() {
+    console.log("\nImporting airports...");
+
+    const fileStream = fs.createReadStream(AIRPORTS_CSV, { encoding: "utf8" });
     const rl = readline.createInterface({ input: fileStream });
 
     let lineNum = 0;
     let columnMap = null;
 
-    // Prepare statements
-    const insertStmt = this.db.prepare(`
+    const upsertAirportStmt = this.db.prepare(`
       INSERT INTO airports (
         icao, iata, faa, local, name, type, latitude, longitude,
         elevation_ft, country, country_code, state, city, timezone, has_tower
@@ -154,22 +169,24 @@ class CSVImporter {
       ON CONFLICT(icao) DO UPDATE SET
         iata = excluded.iata,
         faa = excluded.faa,
+        local = excluded.local,
         name = excluded.name,
+        type = excluded.type,
         latitude = excluded.latitude,
         longitude = excluded.longitude,
         elevation_ft = excluded.elevation_ft,
+        country = excluded.country,
+        country_code = excluded.country_code,
         state = excluded.state,
         city = excluded.city,
+        timezone = excluded.timezone,
         updated_at = CURRENT_TIMESTAMP
     `);
 
     for await (const line of rl) {
       lineNum++;
-
-      // Skip empty lines
       if (!line.trim()) continue;
 
-      // Parse header
       if (lineNum === 1) {
         columnMap = this.getColumnMap(line);
         continue;
@@ -178,7 +195,6 @@ class CSVImporter {
       try {
         const row = this.parseCSVLine(line);
 
-        // Extract values
         const icao = row[columnMap["icao_code"]]?.trim() || null;
         const iata = row[columnMap["iata_code"]]?.trim() || null;
         const faa = row[columnMap["gps_code"]]?.trim() || null;
@@ -192,79 +208,163 @@ class CSVImporter {
         const state = row[columnMap["iso_region"]]?.trim() || null;
         const city = row[columnMap["municipality"]]?.trim() || null;
 
-        // Skip if no ICAO code and no name
-        if (!icao && !name) {
+        if (!icao || !name) {
           this.stats.airports.skipped++;
           continue;
         }
 
-        // Skip if missing required fields
-        if (!latitude || !longitude || !elevation || !countryCode) {
+        if (
+          latitude === null ||
+          longitude === null ||
+          elevation === null ||
+          !countryCode
+        ) {
           this.stats.airports.skipped++;
           continue;
         }
 
-        // Use ICAO or generate a placeholder if missing
-        const uniqueId = icao || name.replace(/\s+/g, "_").substring(0, 4);
-
-        const result = insertStmt.run(
-          uniqueId,
-          iata || null,
-          faa || null,
-          local || null,
+        upsertAirportStmt.run(
+          icao,
+          iata,
+          faa,
+          local,
           name,
           type,
           latitude,
           longitude,
           elevation,
-          this.countriesMap.get(countryCode) || countryCode || null, // Lookup country name
+          this.countriesMap.get(countryCode) || countryCode,
           countryCode,
-          state || null,
-          city || null,
-          null, // timezone (not in source CSV)
-          0, // has_tower (default false)
+          state,
+          city,
+          null,
+          0,
         );
 
-        if (result.changes) {
-          this.stats.airports.inserted++;
-        }
+        this.stats.airports.inserted++;
       } catch (error) {
-        console.error(`Error on line ${lineNum}:`, error.message);
+        console.error(`Error in airports.csv line ${lineNum}:`, error.message);
         this.stats.airports.skipped++;
       }
     }
 
-    console.log(`  ✓ Inserted: ${this.stats.airports.inserted}`);
-    console.log(`  ✓ Skipped: ${this.stats.airports.skipped}`);
+    console.log(`  Inserted/Updated: ${this.stats.airports.inserted}`);
+    console.log(`  Skipped: ${this.stats.airports.skipped}`);
   }
 
-  /**
-   * Import runways from CSV
-   */
-  async importRunways() {
-    console.log("\n🛬 Importing runways...");
+  buildRunwayEnds(row, columnMap, runwayId) {
+    const defs = [
+      { side: "le", id: runwayId * 10 + 1 },
+      { side: "he", id: runwayId * 10 + 2 },
+    ];
 
-    const fileStream = fs.createReadStream(RUNWAYS_CSV, {
-      encoding: "utf8",
-    });
+    const runwayEnds = [];
+
+    for (const def of defs) {
+      const ident = row[columnMap[`${def.side}_ident`]]?.trim() || null;
+      const headingDegT = this.toNumber(row[columnMap[`${def.side}_heading_degt`]]);
+      const latitudeDeg = this.toNumber(row[columnMap[`${def.side}_latitude_deg`]]);
+      const longitudeDeg = this.toNumber(row[columnMap[`${def.side}_longitude_deg`]]);
+      const displacedThresholdFt = this.toNumber(
+        row[columnMap[`${def.side}_displaced_threshold_ft`]],
+      );
+      const elevationFt = this.toNumber(row[columnMap[`${def.side}_elevation_ft`]]);
+
+      if (
+        !ident ||
+        headingDegT === null ||
+        latitudeDeg === null ||
+        longitudeDeg === null
+      ) {
+        continue;
+      }
+
+      runwayEnds.push({
+        id: def.id,
+        runwayId,
+        ident,
+        headingDegT,
+        latitudeDeg,
+        longitudeDeg,
+        displacedThresholdFt,
+        elevationFt,
+      });
+    }
+
+    return runwayEnds;
+  }
+
+  async importRunways() {
+    console.log("\nImporting runways...");
+
+    const fileStream = fs.createReadStream(RUNWAYS_CSV, { encoding: "utf8" });
     const rl = readline.createInterface({ input: fileStream });
 
     let lineNum = 0;
     let columnMap = null;
 
-    // Prepare statements
     const getAirportStmt = this.db.prepare(
       "SELECT id FROM airports WHERE icao = ? LIMIT 1",
     );
-    const insertStmt = this.db.prepare(`
-      INSERT INTO runways (id, airport_id, length_ft, width_ft, surface, lighting)
+
+    const upsertRunwayStmt = this.db.prepare(`
+      INSERT INTO runways (id, airport_id, length_ft, width_ft, surface, lighted)
       VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT DO NOTHING
+      ON CONFLICT(id) DO UPDATE SET
+        airport_id = excluded.airport_id,
+        length_ft = excluded.length_ft,
+        width_ft = excluded.width_ft,
+        surface = excluded.surface,
+        lighted = excluded.lighted
     `);
+
+    const upsertRunwayEndStmt = this.db.prepare(`
+      INSERT INTO runway_ends (
+        id, runway_id, ident, heading_degT, latitude_deg, longitude_deg,
+        displaced_threshold_ft, elevation_ft
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        runway_id = excluded.runway_id,
+        ident = excluded.ident,
+        heading_degT = excluded.heading_degT,
+        latitude_deg = excluded.latitude_deg,
+        longitude_deg = excluded.longitude_deg,
+        displaced_threshold_ft = excluded.displaced_threshold_ft,
+        elevation_ft = excluded.elevation_ft
+    `);
+
+    const deleteRunwayEndsStmt = this.db.prepare(
+      "DELETE FROM runway_ends WHERE runway_id = ?",
+    );
+
+    const upsertRunwayWithEnds = this.db.transaction((runway, ends) => {
+      upsertRunwayStmt.run(
+        runway.id,
+        runway.airportId,
+        runway.lengthFt,
+        runway.widthFt,
+        runway.surface,
+        runway.lighted,
+      );
+
+      deleteRunwayEndsStmt.run(runway.id);
+
+      for (const end of ends) {
+        upsertRunwayEndStmt.run(
+          end.id,
+          end.runwayId,
+          end.ident,
+          end.headingDegT,
+          end.latitudeDeg,
+          end.longitudeDeg,
+          end.displacedThresholdFt,
+          end.elevationFt,
+        );
+      }
+    });
 
     for await (const line of rl) {
       lineNum++;
-
       if (!line.trim()) continue;
 
       if (lineNum === 1) {
@@ -275,81 +375,66 @@ class CSVImporter {
       try {
         const row = this.parseCSVLine(line);
 
-        const runwayId = row[columnMap["id"]]?.trim();
-        const airportIdent =
-          row[columnMap["airport_ident"]]?.trim() ||
-          row[columnMap["le_ident"]]?.trim();
-        const length = this.toNumber(row[columnMap["length_ft"]]);
-        const width = this.toNumber(row[columnMap["width_ft"]]);
+        const runwayId = this.toNumber(row[columnMap["id"]]?.trim());
+        const airportIdent = row[columnMap["airport_ident"]]?.trim() || null;
+        const lengthFt = this.toNumber(row[columnMap["length_ft"]]);
+        const widthFt = this.toNumber(row[columnMap["width_ft"]]);
         const surface = row[columnMap["surface"]]?.trim() || "unknown";
         const lighted = this.toBoolean(row[columnMap["lighted"]]);
         const closed = this.toBoolean(row[columnMap["closed"]]);
 
-        // Skip closed runways
         if (closed) {
           this.stats.runways.skipped++;
           continue;
         }
 
-        // Skip if missing required fields
-        if (!runwayId || !airportIdent || !length || !width) {
+        if (
+          runwayId === null ||
+          !airportIdent ||
+          lengthFt === null ||
+          widthFt === null
+        ) {
           this.stats.runways.skipped++;
           continue;
         }
 
-        // Get airport ID by ident
         const airport = getAirportStmt.get(airportIdent);
         if (!airport) {
           this.stats.runways.skipped++;
           continue;
         }
 
-        const result = insertStmt.run(
-          runwayId,
-          airport.id,
-          length,
-          width,
-          this.normalizeSurface(surface),
-          lighted ? 1 : 0,
-        );
+        const runway = {
+          id: runwayId,
+          airportId: airport.id,
+          lengthFt,
+          widthFt,
+          surface: this.normalizeSurface(surface),
+          lighted: lighted ? 1 : 0,
+        };
 
-        if (result.changes) {
-          this.stats.runways.inserted++;
+        const runwayEnds = this.buildRunwayEnds(row, columnMap, runwayId);
+        upsertRunwayWithEnds(runway, runwayEnds);
+
+        this.stats.runways.inserted++;
+        this.stats.runwayEnds.inserted += runwayEnds.length;
+        if (runwayEnds.length === 0) {
+          this.stats.runwayEnds.skipped++;
         }
       } catch (error) {
-        console.error(`Error on line ${lineNum}:`, error.message);
+        console.error(`Error in runways.csv line ${lineNum}:`, error.message);
         this.stats.runways.skipped++;
       }
     }
 
-    console.log(`  ✓ Inserted: ${this.stats.runways.inserted}`);
-    console.log(`  ✓ Skipped: ${this.stats.runways.skipped}`);
+    console.log(`  Inserted/Updated: ${this.stats.runways.inserted}`);
+    console.log(`  Skipped: ${this.stats.runways.skipped}`);
+    console.log(`  Runway Ends Inserted/Updated: ${this.stats.runwayEnds.inserted}`);
+    console.log(`  Runway Ends Skipped: ${this.stats.runwayEnds.skipped}`);
   }
 
-  /**
-   * Normalize runway surface type
-   */
-  normalizeSurface(surface) {
-    if (!surface) return "unknown";
-
-    const normalized = surface.toUpperCase();
-
-    if (normalized.includes("ASPH")) return "asphalt";
-    if (normalized.includes("CONC")) return "concrete";
-    if (normalized.includes("DIRT") || normalized === "DIRT") return "dirt";
-    if (normalized.includes("GRVL") || normalized === "GVL") return "gravel";
-    if (normalized.includes("GRASS") || normalized === "TURF") return "grass";
-    if (normalized.includes("METAL")) return "metal";
-    if (normalized.includes("WATER")) return "water";
-
-    return "unknown";
-  }
-
-  /**
-   * Import frequencies from CSV
-   */
   async importFrequencies() {
-    console.log("\n📡 Importing frequencies...");
+    console.log("\nImporting frequencies...");
 
     const fileStream = fs.createReadStream(FREQUENCIES_CSV, {
       encoding: "utf8",
@@ -359,29 +444,25 @@ class CSVImporter {
     let lineNum = 0;
     let columnMap = null;
 
-    // Prepare statements
     const getAirportStmt = this.db.prepare(
       "SELECT id FROM airports WHERE icao = ? LIMIT 1",
     );
 
-    // Map frequency types to database columns
     const frequencyMap = {
       atis: "atis",
       tower: "tower",
       ground: "ground",
       clearance: "clearance",
-      ctaf: "unicom", // CTAF maps to UNICOM
+      ctaf: "unicom",
       unicom: "unicom",
       approach: "approach",
       departure: "departure",
     };
 
-    // Group frequencies by airport
     const frequenciesByAirport = {};
 
     for await (const line of rl) {
       lineNum++;
-
       if (!line.trim()) continue;
 
       if (lineNum === 1) {
@@ -401,7 +482,6 @@ class CSVImporter {
           continue;
         }
 
-        // Get airport ID
         const airport = getAirportStmt.get(airportIdent);
         if (!airport) {
           this.stats.frequencies.skipped++;
@@ -414,23 +494,20 @@ class CSVImporter {
           continue;
         }
 
-        // Group by airport ID
         if (!frequenciesByAirport[airport.id]) {
           frequenciesByAirport[airport.id] = {};
         }
 
-        // Only store if we don't have this frequency type yet
         if (!frequenciesByAirport[airport.id][dbColumn]) {
           frequenciesByAirport[airport.id][dbColumn] = frequency;
         }
       } catch (error) {
-        console.error(`Error on line ${lineNum}:`, error.message);
+        console.error(`Error in airport-frequencies.csv line ${lineNum}:`, error.message);
         this.stats.frequencies.skipped++;
       }
     }
 
-    // Insert frequencies into database
-    const insertStmt = this.db.prepare(`
+    const upsertFrequencyStmt = this.db.prepare(`
       INSERT INTO frequencies (
         airport_id, atis, tower, ground, clearance, unicom, approach, departure
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -447,7 +524,7 @@ class CSVImporter {
     for (const airportId of Object.keys(frequenciesByAirport)) {
       const freqs = frequenciesByAirport[airportId];
 
-      const result = insertStmt.run(
+      upsertFrequencyStmt.run(
         airportId,
         freqs.atis || null,
         freqs.tower || null,
@@ -458,80 +535,68 @@ class CSVImporter {
         freqs.departure || null,
       );
 
-      if (result.changes) {
-        this.stats.frequencies.inserted++;
-      }
+      this.stats.frequencies.inserted++;
     }
 
-    console.log(`  ✓ Inserted: ${this.stats.frequencies.inserted}`);
-    console.log(`  ✓ Skipped: ${this.stats.frequencies.skipped}`);
+    console.log(`  Inserted/Updated: ${this.stats.frequencies.inserted}`);
+    console.log(`  Skipped: ${this.stats.frequencies.skipped}`);
   }
 
-  /**
-   * Close database connection
-   */
   close() {
     this.db.close();
   }
 
-  /**
-   * Print summary
-   */
   printSummary() {
     console.log("\n" + "=".repeat(50));
-    console.log("📊 Import Summary");
+    console.log("Import Summary");
     console.log("=".repeat(50));
 
     console.log(
-      `\n✈️  Airports: ${this.stats.airports.inserted} inserted, ${this.stats.airports.skipped} skipped`,
+      `\nAirports: ${this.stats.airports.inserted} inserted/updated, ${this.stats.airports.skipped} skipped`,
     );
     console.log(
-      `🛬  Runways: ${this.stats.runways.inserted} inserted, ${this.stats.runways.skipped} skipped`,
+      `Runways: ${this.stats.runways.inserted} inserted/updated, ${this.stats.runways.skipped} skipped`,
     );
     console.log(
-      `📡 Frequencies: ${this.stats.frequencies.inserted} inserted, ${this.stats.frequencies.skipped} skipped`,
+      `Runway Ends: ${this.stats.runwayEnds.inserted} inserted/updated, ${this.stats.runwayEnds.skipped} skipped`,
     );
-    console.log("\n✅ Import complete!");
+    console.log(
+      `Frequencies: ${this.stats.frequencies.inserted} inserted/updated, ${this.stats.frequencies.skipped} skipped`,
+    );
+    console.log("\nImport complete.");
   }
 }
 
-/**
- * Main execution
- */
 async function main() {
   try {
     const dbPath = process.argv[2] || DEFAULT_DB_PATH;
 
-    console.log("🚀 Airport Database CSV Importer");
-    console.log(`📦 Database: ${dbPath}`);
-    console.log(`📂 CSV Source: ${CSV_DIR}\n`);
+    console.log("Airport Database CSV Importer");
+    console.log(`Database: ${dbPath}`);
+    console.log(`CSV Source: ${CSV_DIR}\n`);
 
-    // Verify database exists
     if (!fs.existsSync(dbPath)) {
-      console.error("❌ Error: Database file not found:", dbPath);
+      console.error("Error: Database file not found:", dbPath);
       process.exit(1);
     }
 
-    // Verify CSV files exist
     const requiredFiles = [
       AIRPORTS_CSV,
       RUNWAYS_CSV,
       FREQUENCIES_CSV,
       COUNTRIES_CSV,
     ];
+
     for (const file of requiredFiles) {
       if (!fs.existsSync(file)) {
-        console.error("❌ Error: Required CSV file not found:", file);
+        console.error("Error: Required CSV file not found:", file);
         process.exit(1);
       }
     }
 
     const importer = new CSVImporter(dbPath);
 
-    // Load countries first
     await importer.loadCountries();
-
-    // Import data
     await importer.importAirports();
     await importer.importRunways();
     await importer.importFrequencies();
@@ -539,7 +604,7 @@ async function main() {
     importer.printSummary();
     importer.close();
   } catch (error) {
-    console.error("❌ Fatal error:", error);
+    console.error("Fatal error:", error);
     process.exit(1);
   }
 }

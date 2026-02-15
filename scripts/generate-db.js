@@ -5,9 +5,12 @@
  * Usage: node scripts/generate-db.js
  */
 
-const fs = require("fs");
-const path = require("path");
-const initSqlJs = require("sql.js");
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import initSqlJs from "sql.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function generateDatabase() {
   const SQL = await initSqlJs();
@@ -43,13 +46,30 @@ async function generateDatabase() {
     );
 
     CREATE TABLE runways (
-      id TEXT NOT NULL,
+      id INTEGER PRIMARY KEY,
       airport_id INTEGER NOT NULL,
+
       length_ft INTEGER NOT NULL,
       width_ft INTEGER NOT NULL,
       surface TEXT NOT NULL,
-      lighting BOOLEAN NOT NULL,
+      lighted BOOLEAN NOT NULL,
+
       FOREIGN KEY (airport_id) REFERENCES airports(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE runway_ends (
+      id INTEGER PRIMARY KEY,
+      runway_id INTEGER NOT NULL,
+
+      ident TEXT NOT NULL,
+      heading_degT REAL NOT NULL,
+      latitude_deg REAL NOT NULL,
+      longitude_deg REAL NOT NULL,
+
+      displaced_threshold_ft INTEGER,
+      elevation_ft INTEGER,
+
+      FOREIGN KEY (runway_id) REFERENCES runways(id) ON DELETE CASCADE
     );
 
     CREATE TABLE fuel_available (
@@ -99,7 +119,7 @@ async function generateDatabase() {
   const data = db.export();
   const buffer = Buffer.from(data);
 
-  const dataDir = path.join(__dirname, "..", "data");
+  const dataDir = path.join(__dirname, "..", "dist");
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }

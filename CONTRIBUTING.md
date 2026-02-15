@@ -1,191 +1,79 @@
 # Contributing to @tabletopandroid/airport-db-data-sqlite
 
-Thank you for your interest in contributing to the airport database! This project is open-source and community-driven. We welcome contributions from everyone.
+Thanks for contributing.
 
-## What Can You Contribute?
+## Source of Truth Policy
 
-- **Airport Data** — Add missing airports, update information
-- **Data Corrections** — Fix coordinates, runway info, frequencies, etc.
-- **Documentation** — Improve guides and examples
-- **Data Sources** — Suggest or implement new data sources
-- **Bug Reports** — Report inaccuracies or issues
+Data correctness in this project follows **OurAirports** as the canonical source.
 
-## Getting Started
+- This repository is a **consumer/distribution** project.
+- Do **not** submit direct airport/runway/frequency data corrections in this repo.
+- Submit data fixes upstream to OurAirports first.
 
-### Prerequisites
+If a record is wrong here, the expected path is:
 
-- Node.js 14+
-- Git
-- Basic familiarity with SQLite (optional)
+1. Open or link an upstream OurAirports issue/PR.
+2. Wait for that change to land upstream.
+3. Sync/update source CSVs in this repo and regenerate/import.
 
-### Local Setup
+## What Contributions Are Welcome Here
 
-1. **Fork the repository**
+- Import/build pipeline improvements (`scripts/`)
+- Schema/import documentation (`docs/`)
+- Packaging/release workflow improvements (npm/Changesets/GitHub release)
+- Bug fixes in runtime helper code (`src/`)
+- Tooling and developer-experience improvements
 
-   ```bash
-   git clone https://github.com/your-username/airport-db-data-sqlite.git
-   cd airport-db-data-sqlite
-   ```
+## What Not To Contribute Here
 
-2. **Install dependencies**
+- Manual edits to airport/runway/frequency facts that are not yet in OurAirports
+- New primary data sources that bypass OurAirports without maintainer approval
 
-   ```bash
-   npm install
-   ```
-
-3. **Regenerate the database** (if adding data)
-   ```bash
-   npm run generate-db
-   ```
-
-## How to Contribute Data
-
-### Adding Airport Information
-
-The database schema supports:
-
-```
-airports table:
-- ICAO code (primary key)
-- IATA code
-- FAA identifier
-- Airport name, type, status
-- Coordinates, elevation
-- Country, state, city info
-- Control tower flag
-
-runways table:
-- Runway ID, dimensions, surface, lighting
-
-frequencies table:
-- ATIS, tower, ground, clearance, unicom, approach, departure
-
-operational table:
-- AIRAC cycle information
-
-fuel_available table:
-- Available fuel types (100LL, JetA, etc.)
-
-infrastructure table:
-- FBO, hangars, tie-down availability
-```
-
-### Data Quality Standards
-
-- **Accuracy** — Use verified public sources (FAA, ICAO, AOPA, etc.)
-- **Completeness** — Fill in what you know; leave optional fields empty if unknown
-- **Consistency** — Follow existing naming conventions
-- **Attribution** — Cite your data source in commit messages
-
-## Workflow
-
-### 1. File an Issue First
-
-For significant changes, open a GitHub issue to discuss:
-
-- What data you want to add/change
-- Why it matters
-- Your data sources
-
-```
-Title: Add KLZU runway information
-Description:
-- Airport: Gwinnett County Airport (KLZU)
-- Adding runway lengths and surfaces
-- Source: FAA Instrument Flight Procedures database
-```
-
-### 2. Create a Branch
+## Local Setup
 
 ```bash
-git checkout -b add/klzu-runways
+git clone https://github.com/your-username/airport-db-data-sqlite.git
+cd airport-db-data-sqlite
+npm install
 ```
 
-### 3. Update the Data
+## Data Sync Workflow (After Upstream Update)
 
-Modify `scripts/generate-db.js` to add your data, or create a migration script for bulk updates.
-
-Example adding to generate-db.js:
-
-```javascript
-db.run(`
-  INSERT INTO runways (id, airport_id, length_ft, width_ft, surface, lighting)
-  VALUES 
-  ('09/27', 'KLZU', 6001, 100, 'asphalt', 1),
-  ('03/21', 'KLZU', 5000, 75, 'concrete', 1)
-`);
-```
-
-### 4. Regenerate the Database
+1. Update local CSV source files (`data/*.csv`) from OurAirports.
+2. Rebuild database and import:
 
 ```bash
-npm run generate-db
+npm run build:full
 ```
 
-### 5. Test Your Changes
+3. Validate schema/import expectations:
 
-- Verify the database file was created
-- Check file size is reasonable (>90KB)
-- Spot-check a few records if possible
+- `docs/schema.md`
+- `docs/csv-import.md`
 
-### 6. Commit and Push
+4. Commit with clear context including upstream references.
 
-```bash
-git add data/airports.sqlite scripts/generate-db.js
-git commit -m "Add KLZU runway data from FAA database"
-git push origin add/klzu-runways
+Example commit message:
+
+```text
+sync: update source CSVs from OurAirports (refs ourairports#1234)
 ```
 
-### 7. Submit a Pull Request
+## Pull Request Expectations
 
-- Reference any related issues
-- Describe what data was added/changed
-- Include your data sources
+Include in every PR:
 
-```
-## Description
-Added runway information for Gwinnett County Airport (KLZU)
+- What changed and why
+- Any upstream OurAirports issue/PR links (for data-affecting changes)
+- Commands run locally to verify
 
-## Data Source
-FAA Instrument Flight Procedures database, accessed Feb 2026
+## References
 
-## Changes
-- Added 2 runways (09/27 and 03/21)
-- Included dimensions and surface types
-- Marked lighting status
-
-Closes #5
-```
-
-## Code of Conduct
-
-- Be respectful and constructive
-- Focus on accuracy and data quality
-- Give credit where it's due
-- Help others learn and improve
-
-## Questions?
-
-- Check the [README.md](./README.md) for API documentation
-- Review existing data for patterns
-- Open a discussion issue for questions
-
-## Data Attribution
-
-This project uses data from:
-
-- FAA (Federal Aviation Administration)
-- ICAO (International Civil Aviation Organization)
-- OpenFlights
-- OurAirports.com
-- Various national flight information services
-
-When adding data, please attribute the source.
+- Project overview: [README.md](./README.md)
+- Schema source of truth: [docs/schema.md](./docs/schema.md)
+- CSV import behavior: [docs/csv-import.md](./docs/csv-import.md)
+- Publishing process: [docs/publishing.md](./docs/publishing.md)
 
 ## License
 
-By contributing, you agree that your contributions are licensed under the ODbL 1.0. See [LICENSE](./LICENSE) for details.
-
----
-
-Thank you for making airport data better for everyone! ✈️
+By contributing, you agree that your contributions are licensed under ODbL 1.0. See [LICENSE](./LICENSE).
