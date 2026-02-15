@@ -1,6 +1,6 @@
 {
   "name": "@tabletopandroid/airport-db-data-sqlite",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "SQLite database distribution of airport data for the airport-db ecosystem",
   "type": "module",
   "sideEffects": false,
