@@ -1,5 +1,11 @@
 # @tabletopandroid/airport-db-data-sqlite
 
+## 0.2.1
+
+### Patch Changes
+
+- Restore import dependency and refresh generated database up to 69,000 airports.
+
 ## 0.2.0
 
 ### Minor Changes
