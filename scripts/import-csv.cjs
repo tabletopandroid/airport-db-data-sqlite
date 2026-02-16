@@ -27,7 +27,9 @@ function resolveCsvDir() {
       "countries.csv",
     ];
 
-    const hasAll = required.every((file) => fs.existsSync(path.join(dir, file)));
+    const hasAll = required.every((file) =>
+      fs.existsSync(path.join(dir, file)),
+    );
     if (hasAll) {
       return dir;
     }
@@ -127,7 +129,11 @@ class CSVImporter {
 
   toBoolean(value) {
     if (value === null || value === undefined || value === "") return null;
-    return value === "1" || String(value).toLowerCase() === "true" || String(value).toLowerCase() === "yes";
+    return (
+      value === "1" ||
+      String(value).toLowerCase() === "true" ||
+      String(value).toLowerCase() === "yes"
+    );
   }
 
   toNumber(value) {
@@ -145,7 +151,8 @@ class CSVImporter {
     if (normalized.includes("CONC")) return "concrete";
     if (normalized.includes("DIRT")) return "dirt";
     if (normalized.includes("GRVL") || normalized === "GVL") return "gravel";
-    if (normalized.includes("GRASS") || normalized.includes("TURF")) return "grass";
+    if (normalized.includes("GRASS") || normalized.includes("TURF"))
+      return "grass";
     if (normalized.includes("METAL")) return "metal";
     if (normalized.includes("WATER")) return "water";
 
@@ -195,7 +202,7 @@ class CSVImporter {
       try {
         const row = this.parseCSVLine(line);
 
-        const icao = row[columnMap["icao_code"]]?.trim() || null;
+        const icao = row[columnMap["ident"]]?.trim() || null;
         const iata = row[columnMap["iata_code"]]?.trim() || null;
         const faa = row[columnMap["gps_code"]]?.trim() || null;
         const local = row[columnMap["local_code"]]?.trim() || null;
@@ -262,13 +269,21 @@ class CSVImporter {
 
     for (const def of defs) {
       const ident = row[columnMap[`${def.side}_ident`]]?.trim() || null;
-      const headingDegT = this.toNumber(row[columnMap[`${def.side}_heading_degt`]]);
-      const latitudeDeg = this.toNumber(row[columnMap[`${def.side}_latitude_deg`]]);
-      const longitudeDeg = this.toNumber(row[columnMap[`${def.side}_longitude_deg`]]);
+      const headingDegT = this.toNumber(
+        row[columnMap[`${def.side}_heading_degt`]],
+      );
+      const latitudeDeg = this.toNumber(
+        row[columnMap[`${def.side}_latitude_deg`]],
+      );
+      const longitudeDeg = this.toNumber(
+        row[columnMap[`${def.side}_longitude_deg`]],
+      );
       const displacedThresholdFt = this.toNumber(
         row[columnMap[`${def.side}_displaced_threshold_ft`]],
       );
-      const elevationFt = this.toNumber(row[columnMap[`${def.side}_elevation_ft`]]);
+      const elevationFt = this.toNumber(
+        row[columnMap[`${def.side}_elevation_ft`]],
+      );
 
       if (
         !ident ||
@@ -429,7 +444,9 @@ class CSVImporter {
 
     console.log(`  Inserted/Updated: ${this.stats.runways.inserted}`);
     console.log(`  Skipped: ${this.stats.runways.skipped}`);
-    console.log(`  Runway Ends Inserted/Updated: ${this.stats.runwayEnds.inserted}`);
+    console.log(
+      `  Runway Ends Inserted/Updated: ${this.stats.runwayEnds.inserted}`,
+    );
     console.log(`  Runway Ends Skipped: ${this.stats.runwayEnds.skipped}`);
   }
 
@@ -502,7 +519,10 @@ class CSVImporter {
           frequenciesByAirport[airport.id][dbColumn] = frequency;
         }
       } catch (error) {
-        console.error(`Error in airport-frequencies.csv line ${lineNum}:`, error.message);
+        console.error(
+          `Error in airport-frequencies.csv line ${lineNum}:`,
+          error.message,
+        );
         this.stats.frequencies.skipped++;
       }
     }
