@@ -42,7 +42,13 @@ npm run changeset
 npm run version-packages
 ```
 
-3. Publish to npm:
+3. Keep GitHub in sync:
+
+```bash
+git add . && git commit -m "release: x.x.x" && git push
+```
+
+4. Publish to npm:
 
 ```bash
 npm publish
